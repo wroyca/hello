@@ -57,3 +57,20 @@ DllMain (HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
   //
   return TRUE;
 }
+
+// When working with static Thread-Local Storage in MinGW, we may encounter a
+// protection fault during relocation. This occurs because MinGW runtime
+// includes the tlssup.o object file with the CRT initialization routines,
+// which initializes TLS.
+//
+// More specifically, this happens due to the __dyn_tls_init_callback hook,
+// declared in crtdll.c and defined in tlssup.c. Since this hook is non-null by
+// default, the linker adds a .tls section to the binary, which assumes a fixed
+// base address.
+//
+// For what it’s worth, other CRTs resolve this by leaving the TLS hook
+// uninitialized unless __declspec(thread) variables are used. MinGW, however,
+// doesn't handle it this way, so we need to take steps to avoid including
+// tlssup.o.
+//
+const void* __dyn_tls_init_callback = nullptr;
