@@ -4,6 +4,56 @@
 
 namespace hello
 {
+  namespace
+  {
+    void
+    main ()
+    {
+      MessageBox (nullptr, "Hello", "...", MB_OK);
+    }
+  }
+
+  constexpr uintptr_t security_init_cookie = 0x000000; // FIXME: Update this address manually
+  constexpr uintptr_t tmainCRTStartup = 0x000000;      // FIXME: Update this address manually
+
+  [[noreturn]] __attribute__ ((naked)) void
+  start ()
+  {
+    __asm__ __volatile__
+    (
+      // Save registers manually
+      "push %%eax\n\t"
+      "push %%ecx\n\t"
+      "push %%edx\n\t"
+      "push %%ebx\n\t"
+      "push %%esp\n\t"
+      "push %%ebp\n\t"
+      "push %%esi\n\t"
+      "push %%edi\n\t"
+
+      // Call security_init_cookie
+      "call *%0\n\t"
+
+      // Call Initialize
+      "call *%1\n\t"
+
+      // Restore registers manually
+      "pop %%edi\n\t"
+      "pop %%esi\n\t"
+      "pop %%ebp\n\t"
+      "pop %%esp\n\t"
+      "pop %%ebx\n\t"
+      "pop %%edx\n\t"
+      "pop %%ecx\n\t"
+      "pop %%eax\n\t"
+
+      // Jump to tmainCRTStartup
+      "jmp *%2\n\t"
+      :
+      : "r"(security_init_cookie), "r"(main), "r"(tmainCRTStartup)
+      : "memory");
+  }
+
   extern "C"
   {
     BOOL WINAPI
