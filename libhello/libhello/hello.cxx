@@ -1,6 +1,8 @@
 #include <libhello/hello.hxx>
 
+#include <array>
 #include <cassert>
+#include <cstdint>
 
 namespace hello
 {
@@ -22,6 +24,7 @@ namespace hello
     __asm__ __volatile__
     (
       // Save registers manually
+      //
       "push %%eax\n\t"
       "push %%ecx\n\t"
       "push %%edx\n\t"
@@ -32,12 +35,15 @@ namespace hello
       "push %%edi\n\t"
 
       // Call security_init_cookie
+      //
       "call *%0\n\t"
 
-      // Call Initialize
+      // Call main
+      //
       "call *%1\n\t"
 
       // Restore registers manually
+      //
       "pop %%edi\n\t"
       "pop %%esi\n\t"
       "pop %%ebp\n\t"
@@ -48,6 +54,7 @@ namespace hello
       "pop %%eax\n\t"
 
       // Jump to tmainCRTStartup
+      //
       "jmp *%2\n\t"
       :
       : "r"(security_init_cookie), "r"(main), "r"(tmainCRTStartup)
@@ -56,13 +63,52 @@ namespace hello
 
   extern "C"
   {
+    // DllMain runs inside the loader lock.
+    //
+    // This is one of the few times the OS lets us run code while one of its
+    // internal locks is held. This means that we *must* be extra careful not
+    // to violate a lock hierarchy.
+    //
     BOOL WINAPI
     DllMain (HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
     {
       switch (fdwReason)
       {
       case DLL_PROCESS_ATTACH:
-        break;
+        {
+          const uintptr_t target = 0x000000;
+          const uintptr_t source = (uintptr_t)&start;
+          const uintptr_t offset = source - target - 5;
+
+          unsigned long old_protect (0);
+
+          VirtualProtect (reinterpret_cast<LPVOID> (target),
+                          0x05,
+                          PAGE_EXECUTE_READWRITE,
+                          &old_protect);
+          {
+            std::array<uint8_t, 5> jump_instruction = {
+              {0xE9,
+               static_cast<uint8_t> (offset),
+               static_cast<uint8_t> (offset >> 8),
+               static_cast<uint8_t> (offset >> 16),
+               static_cast<uint8_t> (offset >> 24)}};
+
+            memcpy (reinterpret_cast<void*> (target),
+                    jump_instruction.data (),
+                    jump_instruction.size ());
+
+            VirtualProtect (reinterpret_cast<LPVOID> (target),
+                            0x05,
+                            old_protect,
+                            &old_protect);
+
+            FlushInstructionCache (GetCurrentProcess (),
+                                   reinterpret_cast<LPCVOID> (target),
+                                   jump_instruction.size ());
+          }
+          break;
+        }
 
       case DLL_THREAD_ATTACH:
         break;
